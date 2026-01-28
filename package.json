@@ -13,7 +13,8 @@
     "pm2:restart": "pm2 restart ecosystem.config.cjs",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tunnel": "npx cloudflared tunnel --url https://localhost:3000 --no-tls-verify"
   },
   "dependencies": {
     "@chakra-ui/react": "^2.8.2",

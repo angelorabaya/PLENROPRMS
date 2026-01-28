@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Box,
   Card,
@@ -31,8 +31,16 @@ import {
   Tooltip,
   Alert,
   AlertIcon,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  ModalCloseButton,
 } from '@chakra-ui/react';
-import { FiTrash2, FiPrinter, FiSave, FiDollarSign, FiCreditCard, FiXCircle } from 'react-icons/fi';
+import { FiTrash2, FiPrinter, FiSave, FiDollarSign, FiCreditCard, FiXCircle, FiSettings } from 'react-icons/fi';
+
 import { API_BASE_URL } from '../config/api';
 
 /**
@@ -67,6 +75,9 @@ const formatCurrency = (amount: number): string => {
   }).format(amount);
 };
 
+import { ReceiptPreview } from '../components/ReceiptPreview';
+import { PrinterCalibration } from '../components/PrinterCalibration';
+
 /**
  * Payment Collections Page
  * Form for creating and managing payment collection records
@@ -83,9 +94,30 @@ export const PaymentCollectionsPage = () => {
   const totalBorderColor = useColorModeValue('green.200', 'green.600');
   const toast = useToast();
 
+  // Calibration Modal State
+  const [showCalibration, setShowCalibration] = useState(false);
+
+  // Receipt Preview State
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [receiptData, setReceiptData] = useState<{
+    clientName: string;
+    date: string;
+    items: Array<{ description: string; amount: number }>;
+    totalAmount: number;
+    payments: Array<{
+      mode: string;
+      amount: number;
+      description?: string;
+      checkDate?: string;
+      checkNo?: string;
+    }>;
+    teller?: string;
+  } | null>(null);
+
   // Form state
   const controlNoPrefix = 'AOP'; // Fixed prefix
   const [controlNoNumber, setControlNoNumber] = useState('');
+  const controlNoInputRef = useRef<HTMLInputElement>(null);
   const [clientName, setClientName] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [nature, setNature] = useState('');
@@ -120,6 +152,9 @@ export const PaymentCollectionsPage = () => {
   const [orProvShare, setOrProvShare] = useState('');
   const [orMunShare, setOrMunShare] = useState('');
   const [isPaid, setIsPaid] = useState(false);
+
+  // Cancel confirmation modal state
+  const [showCancelModal, setShowCancelModal] = useState(false);
 
   // Calculated totals
   const feeTotal = feeItems.reduce((sum, item) => sum + item.amount, 0);
@@ -184,7 +219,7 @@ export const PaymentCollectionsPage = () => {
   };
 
   // Handle save and print
-  const handleSaveAndPrint = () => {
+  const handleSaveAndPrint = async () => {
     if (!controlNoNumber || !clientName || !nature) {
       toast({
         title: 'Validation Error',
@@ -196,13 +231,87 @@ export const PaymentCollectionsPage = () => {
       return;
     }
 
-    toast({
-      title: 'Saved Successfully',
-      description: 'Payment collection record has been saved.',
-      status: 'success',
-      duration: 3000,
-      isClosable: true,
-    });
+    if (!orProvShare) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please enter the OR - Provincial Share number.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/collections/save/${controlNoNumber}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orProvShare: orProvShare,
+          date: date,
+          payments: payments,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to save payment');
+      }
+
+      // Save successful - increment OR number for next transaction
+      const currentOrNo = parseInt(orProvShare, 10);
+      const nextOrNo = (currentOrNo + 1).toString();
+
+      toast({
+        title: 'Saved Successfully',
+        description: `Payment collection record has been saved. OR No. ${orProvShare}`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+
+      // Prepare receipt data before resetting
+      setReceiptData({
+        clientName,
+        date,
+        items: feeItems.map(f => ({ description: f.description, amount: f.amount })),
+        totalAmount: feeTotal,
+        payments: payments.map(p => ({
+          mode: p.mode,
+          amount: p.amount,
+          description: p.description,
+          checkDate: p.checkDate,
+          checkNo: p.checkNo || ''
+        })),
+        teller: 'Admin', // Placeholder for now
+      });
+      setShowReceipt(true);
+
+      // Reset form for next transaction, keeping the incremented OR number
+      setControlNoNumber('');
+      setClientName('');
+      setNature('');
+      setFeeItems([]);
+      setPayments([]);
+      setOrProvShare(nextOrNo);
+      setOrMunShare('');
+      setIsPaid(false);
+    } catch (error) {
+      console.error('Error saving payment:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to save payment',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Fetch assessment data based on control number
@@ -323,6 +432,20 @@ export const PaymentCollectionsPage = () => {
 
   return (
     <Box maxW="1400px" mx="auto">
+      {receiptData && (
+        <ReceiptPreview
+          isOpen={showReceipt}
+          onClose={() => setShowReceipt(false)}
+          data={receiptData}
+        />
+
+      )}
+      {showCalibration && (
+        <PrinterCalibration
+          isOpen={showCalibration}
+          onClose={() => setShowCalibration(false)}
+        />
+      )}
       <Card
         bg={cardBg}
         borderRadius="xl"
@@ -333,10 +456,23 @@ export const PaymentCollectionsPage = () => {
       >
         {/* Header */}
         <CardHeader bg={headerBg} py={3} px={5}>
-          <Heading size="md" color="white" fontWeight="semibold">
-            Payment Collection Form
-          </Heading>
+          <Flex justify="space-between" align="center">
+            <Heading size="md" color="white" fontWeight="semibold">
+              Payment Collection Form
+            </Heading>
+            <Button
+              leftIcon={<FiSettings />}
+              size="sm"
+              variant="ghost"
+              color="white"
+              _hover={{ bg: 'whiteAlpha.300' }}
+              onClick={() => setShowCalibration(true)}
+            >
+              Printer Settings
+            </Button>
+          </Flex>
         </CardHeader>
+
 
         <CardBody p={4}>
           {/* Form Fields Section */}
@@ -358,6 +494,7 @@ export const PaymentCollectionsPage = () => {
                     </Text>
                   </InputLeftAddon>
                   <Input
+                    ref={controlNoInputRef}
                     value={controlNoNumber}
                     onChange={handleControlNoChange}
                     onKeyDown={handleControlNoKeyDown}
@@ -738,6 +875,105 @@ export const PaymentCollectionsPage = () => {
           {/* Action Buttons */}
           <Flex justify="flex-end" gap={3} pt={3} borderTop="1px" borderColor={borderColor}>
             <Button
+              leftIcon={<FiXCircle />}
+              colorScheme="red"
+              size="md"
+              isDisabled={!isPaid || loading}
+              onClick={() => {
+                if (!controlNoNumber) {
+                  toast({
+                    title: 'Error',
+                    description: 'No control number specified.',
+                    status: 'error',
+                    duration: 3000,
+                    isClosable: true,
+                  });
+                  return;
+                }
+                setShowCancelModal(true);
+              }}
+              boxShadow="md"
+              _hover={{ transform: 'translateY(-1px)', boxShadow: 'lg' }}
+              transition="all 0.2s"
+            >
+              Cancel Payment
+            </Button>
+
+            {/* Cancel Payment Confirmation Modal */}
+            <Modal isOpen={showCancelModal} onClose={() => setShowCancelModal(false)} isCentered>
+              <ModalOverlay />
+              <ModalContent>
+                <ModalHeader>Confirm Cancellation</ModalHeader>
+                <ModalCloseButton />
+                <ModalBody>
+                  <Text>Are you sure you want to cancel this payment?</Text>
+                  <Text fontWeight="bold" mt={2}>This action cannot be undone.</Text>
+                </ModalBody>
+                <ModalFooter>
+                  <Button variant="ghost" mr={3} onClick={() => setShowCancelModal(false)}>
+                    No, Keep Payment
+                  </Button>
+                  <Button
+                    colorScheme="red"
+                    isLoading={loading}
+                    onClick={async () => {
+                      setShowCancelModal(false);
+                      setLoading(true);
+                      try {
+                        const response = await fetch(`${API_BASE_URL}/collections/cancel/${controlNoNumber}`, {
+                          method: 'DELETE',
+                        });
+
+                        const result = await response.json();
+
+                        if (!response.ok) {
+                          throw new Error(result.message || 'Failed to cancel payment');
+                        }
+
+                        toast({
+                          title: 'Payment Cancelled',
+                          description: 'The payment has been cancelled successfully.',
+                          status: 'success',
+                          duration: 3000,
+                          isClosable: true,
+                        });
+
+                        // Reset the form
+                        setControlNoNumber('');
+                        setClientName('');
+                        setNature('');
+                        setFeeItems([]);
+                        setPayments([]);
+                        setOrProvShare('');
+                        setOrMunShare('');
+                        setIsPaid(false);
+                        setDate(new Date().toISOString().split('T')[0]);
+
+                        // Focus the control number input
+                        setTimeout(() => {
+                          controlNoInputRef.current?.focus();
+                        }, 100);
+                      } catch (error) {
+                        console.error('Error cancelling payment:', error);
+                        toast({
+                          title: 'Error',
+                          description: error instanceof Error ? error.message : 'Failed to cancel payment',
+                          status: 'error',
+                          duration: 3000,
+                          isClosable: true,
+                        });
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                  >
+                    Yes, Cancel Payment
+                  </Button>
+                </ModalFooter>
+              </ModalContent>
+            </Modal>
+
+            <Button
               leftIcon={<FiSave />}
               colorScheme="green"
               size="md"
@@ -769,27 +1005,6 @@ export const PaymentCollectionsPage = () => {
               transition="all 0.2s"
             >
               Print (Mun & Brgy)
-            </Button>
-
-            <Button
-              leftIcon={<FiXCircle />}
-              colorScheme="red"
-              size="md"
-              isDisabled={!isPaid}
-              onClick={() => {
-                toast({
-                  title: 'Cancel Payment',
-                  description: 'Cancellation functionality would go here.',
-                  status: 'warning',
-                  duration: 2000,
-                  isClosable: true,
-                });
-              }}
-              boxShadow="md"
-              _hover={{ transform: 'translateY(-1px)', boxShadow: 'lg' }}
-              transition="all 0.2s"
-            >
-              Cancel Payment
             </Button>
           </Flex>
         </CardBody>

@@ -193,6 +193,149 @@ router.get(
 );
 
 /**
+ * PUT /api/collections/save/:controlNo
+ * Update assessment header with OR number and date
+ */
+router.put(
+    '/save/:controlNo',
+    [
+        body('orProvShare').notEmpty().withMessage('OR Provincial Share is required'),
+        body('date').isISO8601().withMessage('Valid date is required'),
+        validate,
+    ],
+    asyncHandler(async (req: Request, res: Response) => {
+        const { controlNo } = req.params;
+        const { orProvShare, date, payments } = req.body;
+
+        // Build full control number with AOP prefix
+        const fullControlNo = `AOP${controlNo}`;
+
+        // Check if the record exists first
+        const checkResult = await executeQuery<{ aop_control: string; aop_orno: string | null }>(
+            `SELECT aop_control, aop_orno FROM dbo.tbl_assessmenthdr WHERE aop_control = @controlNo`,
+            { controlNo: fullControlNo }
+        );
+
+        if (checkResult.recordset.length === 0) {
+            throw new ApiError(404, 'Assessment record not found');
+        }
+
+        // Check if already paid
+        if (checkResult.recordset[0].aop_orno) {
+            throw new ApiError(400, 'This record has already been paid');
+        }
+
+        // Update the assessment header with OR number and date
+        await executeQuery(
+            `UPDATE dbo.tbl_assessmenthdr 
+             SET aop_orno = @orNo, 
+                 aop_ordate = @orDate
+             WHERE aop_control = @controlNo`,
+            {
+                orNo: orProvShare,
+                orDate: date,
+                controlNo: fullControlNo
+            }
+        );
+
+        // Handle payment details if provided
+        if (payments && Array.isArray(payments) && payments.length > 0) {
+            // First, delete existing payment details for this control number (to ensure clean state)
+            await executeQuery(
+                `DELETE FROM dbo.tbl_assessmentmod WHERE aop_control = @controlNo`,
+                { controlNo: fullControlNo }
+            );
+
+            // Insert new payment details
+            for (const payment of payments) {
+                let bankId = null;
+
+                // Resolve Bank ID if mode is Check and bank name is provided
+                if (payment.mode === 'Check' && payment.description) {
+                    const bankResult = await executeQuery<{ b_ctrlno: string }>(
+                        `SELECT b_ctrlno FROM tbl_banks WHERE b_name = @bankName`,
+                        { bankName: payment.description }
+                    );
+                    if (bankResult.recordset.length > 0) {
+                        bankId = bankResult.recordset[0].b_ctrlno;
+                    }
+                }
+
+                await executeQuery(
+                    `INSERT INTO dbo.tbl_assessmentmod 
+                    (aop_control, aop_mod, aop_bankid, aop_chkdate, aop_chkno, aop_amount)
+                    VALUES 
+                    (@controlNo, @mode, @bankId, @checkDate, @checkNo, @amount)`,
+                    {
+                        controlNo: fullControlNo,
+                        mode: payment.mode,
+                        bankId: bankId,
+                        checkDate: payment.checkDate || null,
+                        checkNo: payment.checkNo || null,
+                        amount: payment.amount
+                    }
+                );
+            }
+        }
+
+        res.json(successResponse(
+            { controlNo: fullControlNo, orNo: orProvShare, orDate: date },
+            'Payment saved successfully'
+        ));
+    })
+);
+
+/**
+ * DELETE /api/collections/cancel/:controlNo
+ * Cancel payment - clears OR number and date, deletes payment records
+ */
+router.delete(
+    '/cancel/:controlNo',
+    asyncHandler(async (req: Request, res: Response) => {
+        const { controlNo } = req.params;
+
+        // Build full control number with AOP prefix
+        const fullControlNo = `AOP${controlNo}`;
+
+        // Check if the record exists first
+        const checkResult = await executeQuery<{ aop_control: string; aop_orno: string | null }>(
+            `SELECT aop_control, aop_orno FROM dbo.tbl_assessmenthdr WHERE aop_control = @controlNo`,
+            { controlNo: fullControlNo }
+        );
+
+        if (checkResult.recordset.length === 0) {
+            throw new ApiError(404, 'Assessment record not found');
+        }
+
+        // Check if record has a payment to cancel
+        if (!checkResult.recordset[0].aop_orno) {
+            throw new ApiError(400, 'This record has no payment to cancel');
+        }
+
+        // Clear OR number and OR date in assessment header
+        await executeQuery(
+            `UPDATE tbl_assessmenthdr 
+             SET aop_orno = NULL, 
+                 aop_ordate = NULL
+             WHERE aop_control = @controlNo`,
+            { controlNo: fullControlNo }
+        );
+
+        // Delete payment records from tbl_assessmentmod
+        await executeQuery(
+            `DELETE FROM tbl_assessmentmod
+             WHERE aop_control = @controlNo`,
+            { controlNo: fullControlNo }
+        );
+
+        res.json(successResponse(
+            { controlNo: fullControlNo },
+            'Payment cancelled successfully'
+        ));
+    })
+);
+
+/**
  * GET /api/collections
  * Get all payment collections with pagination
  */

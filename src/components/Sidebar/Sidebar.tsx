@@ -190,6 +190,7 @@ const SubMenuItemButton = ({
       as="button"
       type="button"
       w="full"
+      mx={1}
       align="center"
       justify={isCollapsed ? 'center' : 'space-between'}
       gap={isCollapsed ? 0 : 3}
@@ -456,7 +457,7 @@ const SidebarContent = ({
         flex={1}
         overflowY="auto"
         py={4}
-        px={isCollapsed ? 2 : 3}
+        px={isCollapsed ? 2 : 4}
         spacing={1}
         align="stretch"
       >
@@ -476,11 +477,12 @@ const SidebarContent = ({
 
             {/* Collapsible Sub-menu */}
             {item.children && item.children.length > 0 && !isCollapsed && (
-              <Collapse in={expandedMenuId === item.id} animateOpacity>
+              <Collapse in={expandedMenuId === item.id} animateOpacity style={{ overflow: 'visible' }}>
                 <VStack
                   mt={1}
                   spacing={1}
                   align="stretch"
+                  px={1}
                   role="menu"
                   aria-label={`${item.label} submenu`}
                 >
@@ -538,7 +540,7 @@ export const Sidebar = ({
   isOpen = false,
   onClose,
   activePath = '/',
-  onNavigate = () => {},
+  onNavigate = () => { },
   isCollapsed = false,
   onToggleCollapse,
   user,
@@ -561,7 +563,7 @@ export const Sidebar = ({
   // Mobile: Use Drawer
   if (isMobile) {
     return (
-      <Drawer isOpen={isOpen} placement="left" onClose={onClose || (() => {})} size="xs">
+      <Drawer isOpen={isOpen} placement="left" onClose={onClose || (() => { })} size="xs">
         <DrawerOverlay />
         <DrawerContent>
           <DrawerCloseButton zIndex={10} />
