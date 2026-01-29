@@ -46,6 +46,7 @@ import {
 import { FiPlus, FiEdit2, FiTrash2 } from 'react-icons/fi';
 import React from 'react';
 import { API_BASE_URL } from '../config/api';
+import { getAuditHeaders } from '../utils/auditHeaders';
 
 /**
  * Payment record interface
@@ -345,14 +346,14 @@ export const BarangaySharePaymentPage = () => {
         // Update existing record
         response = await fetch(`${API_BASE_URL}/barangay-payment/${editingRecord.bs_ctrlno}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuditHeaders(),
           body: JSON.stringify(payload),
         });
       } else {
         // Create new record
         response = await fetch(`${API_BASE_URL}/barangay-payment`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuditHeaders(),
           body: JSON.stringify(payload),
         });
       }
@@ -394,6 +395,7 @@ export const BarangaySharePaymentPage = () => {
     try {
       const response = await fetch(`${API_BASE_URL}/barangay-payment/${deletingRecord.bs_ctrlno}`, {
         method: 'DELETE',
+        headers: getAuditHeaders(false),
       });
 
       const result = await response.json();

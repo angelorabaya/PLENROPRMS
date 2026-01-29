@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { query, body, param } from 'express-validator';
 import { executeQuery } from '../config/index.js';
 import { asyncHandler, validate, ApiError } from '../middleware/index.js';
-import { successResponse } from '../utils/index.js';
+import { successResponse, logActivity } from '../utils/index.js';
 
 const router = Router();
 
@@ -91,7 +91,7 @@ router.post(
             ms_datereturned,
         } = req.body;
 
-        const result = await executeQuery(
+        const result = await executeQuery<MunicipalPaymentRecord>(
             `INSERT INTO [tbl_munpayment] (
                 [ms_year],
                 [ms_mun],
@@ -102,7 +102,9 @@ router.post(
                 [ms_claimedby],
                 [ms_claimeddate],
                 [ms_datereturned]
-            ) VALUES (
+            )
+            OUTPUT INSERTED.*
+            VALUES (
                 @ms_year,
                 @ms_mun,
                 @msamount,
@@ -129,6 +131,23 @@ router.post(
         if (result.rowsAffected[0] === 0) {
             throw new ApiError(500, 'Failed to create payment record');
         }
+
+        await logActivity(req, {
+            action: 'CREATE',
+            tableName: 'tbl_munpayment',
+            recordId: result.recordset?.[0]?.ms_ctrlno ?? null,
+            newValues: result.recordset?.[0] || {
+                ms_year,
+                ms_mun,
+                msamount,
+                ms_natureofpayment,
+                ms_chkdate,
+                ms_chkno,
+                ms_claimedby,
+                ms_claimeddate,
+                ms_datereturned,
+            },
+        });
 
         res.status(201).json(successResponse(null, 'Payment record created successfully'));
     })
@@ -163,6 +182,27 @@ router.put(
             ms_datereturned,
         } = req.body;
 
+        const existing = await executeQuery<MunicipalPaymentRecord>(
+            `SELECT 
+                [ms_ctrlno],
+                [ms_chkdate],
+                [ms_chkno],
+                [ms_mun],
+                [ms_natureofpayment],
+                [ms_year],
+                [msamount],
+                [ms_claimedby],
+                [ms_claimeddate],
+                [ms_datereturned]
+            FROM [tbl_munpayment]
+            WHERE [ms_ctrlno] = @ctrlno`,
+            { ctrlno }
+        );
+
+        if (existing.recordset.length === 0) {
+            throw new ApiError(404, 'Payment record not found');
+        }
+
         const result = await executeQuery(
             `UPDATE [tbl_munpayment] SET
                 [msamount] = COALESCE(@msamount, [msamount]),
@@ -189,6 +229,31 @@ router.put(
             throw new ApiError(404, 'Payment record not found');
         }
 
+        const updated = await executeQuery<MunicipalPaymentRecord>(
+            `SELECT 
+                [ms_ctrlno],
+                [ms_chkdate],
+                [ms_chkno],
+                [ms_mun],
+                [ms_natureofpayment],
+                [ms_year],
+                [msamount],
+                [ms_claimedby],
+                [ms_claimeddate],
+                [ms_datereturned]
+            FROM [tbl_munpayment]
+            WHERE [ms_ctrlno] = @ctrlno`,
+            { ctrlno }
+        );
+
+        await logActivity(req, {
+            action: 'UPDATE',
+            tableName: 'tbl_munpayment',
+            recordId: ctrlno,
+            oldValues: existing.recordset[0],
+            newValues: updated.recordset?.[0] || null,
+        });
+
         res.json(successResponse(null, 'Payment record updated successfully'));
     })
 );
@@ -206,6 +271,27 @@ router.delete(
     asyncHandler(async (req: Request, res: Response) => {
         const { ctrlno } = req.params;
 
+        const existing = await executeQuery<MunicipalPaymentRecord>(
+            `SELECT 
+                [ms_ctrlno],
+                [ms_chkdate],
+                [ms_chkno],
+                [ms_mun],
+                [ms_natureofpayment],
+                [ms_year],
+                [msamount],
+                [ms_claimedby],
+                [ms_claimeddate],
+                [ms_datereturned]
+            FROM [tbl_munpayment]
+            WHERE [ms_ctrlno] = @ctrlno`,
+            { ctrlno }
+        );
+
+        if (existing.recordset.length === 0) {
+            throw new ApiError(404, 'Payment record not found');
+        }
+
         const result = await executeQuery(
             `DELETE FROM [tbl_munpayment] WHERE [ms_ctrlno] = @ctrlno`,
             { ctrlno }
@@ -214,6 +300,13 @@ router.delete(
         if (result.rowsAffected[0] === 0) {
             throw new ApiError(404, 'Payment record not found');
         }
+
+        await logActivity(req, {
+            action: 'DELETE',
+            tableName: 'tbl_munpayment',
+            recordId: ctrlno,
+            oldValues: existing.recordset[0],
+        });
 
         res.json(successResponse(null, 'Payment record deleted successfully'));
     })

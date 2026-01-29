@@ -46,6 +46,7 @@ function App() {
   const [activePath, setActivePath] = useState('/');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [canCancelPayment, setCanCancelPayment] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserProfile>({
     name: '',
     email: '',
@@ -189,18 +190,22 @@ function App() {
       isClosable: true,
     });
     setIsAuthenticated(false);
+    setCanCancelPayment(false);
     setCurrentUser({ name: '', email: '', role: 'User', avatarUrl: undefined });
+    localStorage.removeItem('currentUser');
   };
 
   // Handle login success
-  const handleLogin = (username: string, name: string) => {
+  const handleLogin = (username: string, name: string, logAccess: number | boolean) => {
     setIsAuthenticated(true);
+    setCanCancelPayment(Number(logAccess) === 1 || logAccess === true);
     setCurrentUser({
       name: name,
       email: `${username}@plenro.gov.ph`,
       role: 'User',
       avatarUrl: undefined,
     });
+    localStorage.setItem('currentUser', JSON.stringify({ username, name }));
   };
 
   const handleToggleSidebar = () => {
@@ -300,7 +305,7 @@ function App() {
           ) : activePath === '/payments/municipal-share-payment' ? (
             <MunicipalSharePaymentPage />
           ) : activePath === '/collections/payment-collections' ? (
-            <PaymentCollectionsPage />
+            <PaymentCollectionsPage canCancelPayment={canCancelPayment} />
           ) : (
             <>
               {/* Dashboard Stats - Only show on home */}

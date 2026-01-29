@@ -23,7 +23,7 @@ import { FiUser, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import { API_BASE_URL } from '../config/api';
 
 interface LoginPageProps {
-  onLogin: (username: string, name: string) => void;
+  onLogin: (username: string, name: string, logAccess: number | boolean) => void;
 }
 
 export const LoginPage = ({ onLogin }: LoginPageProps) => {
@@ -54,7 +54,7 @@ export const LoginPage = ({ onLogin }: LoginPageProps) => {
       const result = await response.json();
 
       if (result.success) {
-        onLogin(result.data.username, result.data.name);
+        onLogin(result.data.username, result.data.name, result.data.log_access);
       } else {
         setError(result.message || 'Login failed');
       }

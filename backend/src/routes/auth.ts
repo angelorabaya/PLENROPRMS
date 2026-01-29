@@ -9,6 +9,7 @@ interface LoginUser {
     log_user: string;
     log_pass: string;
     log_cname: string;
+    log_access: number;
 }
 
 /**
@@ -27,7 +28,7 @@ router.post(
 
         // Query user from tbl_login
         const result = await executeQuery<LoginUser>(
-            `SELECT log_user, log_pass, log_cname 
+            `SELECT log_user, log_pass, log_cname, log_access
              FROM tbl_login 
              WHERE log_user = @username AND log_pass = @password`,
             { username, password }
@@ -42,6 +43,7 @@ router.post(
         res.json(successResponse({
             username: user.log_user,
             name: user.log_cname,
+            log_access: user.log_access,
         }));
     })
 );

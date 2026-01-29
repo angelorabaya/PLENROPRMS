@@ -46,6 +46,7 @@ import {
 import { FiPlus, FiEdit2, FiTrash2 } from 'react-icons/fi';
 import React from 'react';
 import { API_BASE_URL } from '../config/api';
+import { getAuditHeaders } from '../utils/auditHeaders';
 
 /**
  * Payment record interface
@@ -310,14 +311,14 @@ export const MunicipalSharePaymentPage = () => {
         // Update existing record
         response = await fetch(`${API_BASE_URL}/municipal-payment/${editingRecord.ms_ctrlno}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuditHeaders(),
           body: JSON.stringify(payload),
         });
       } else {
         // Create new record
         response = await fetch(`${API_BASE_URL}/municipal-payment`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuditHeaders(),
           body: JSON.stringify(payload),
         });
       }
@@ -361,6 +362,7 @@ export const MunicipalSharePaymentPage = () => {
         `${API_BASE_URL}/municipal-payment/${deletingRecord.ms_ctrlno}`,
         {
           method: 'DELETE',
+          headers: getAuditHeaders(false),
         }
       );
 

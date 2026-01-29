@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { query, body, param } from 'express-validator';
 import { executeQuery } from '../config/index.js';
 import { asyncHandler, validate, ApiError } from '../middleware/index.js';
-import { successResponse } from '../utils/index.js';
+import { successResponse, logActivity } from '../utils/index.js';
 
 const router = Router();
 
@@ -98,7 +98,7 @@ router.post(
             bs_datereturned,
         } = req.body;
 
-        const result = await executeQuery(
+        const result = await executeQuery<BarangayPaymentRecord>(
             `INSERT INTO [tbl_brgypayment] (
                 [bs_year],
                 [bs_mun],
@@ -110,7 +110,9 @@ router.post(
                 [bs_claimedby],
                 [bs_claimeddate],
                 [bs_datereturned]
-            ) VALUES (
+            )
+            OUTPUT INSERTED.*
+            VALUES (
                 @bs_year,
                 @bs_mun,
                 @bs_brgy,
@@ -139,6 +141,24 @@ router.post(
         if (result.rowsAffected[0] === 0) {
             throw new ApiError(500, 'Failed to create payment record');
         }
+
+        await logActivity(req, {
+            action: 'CREATE',
+            tableName: 'tbl_brgypayment',
+            recordId: result.recordset?.[0]?.bs_ctrlno ?? null,
+            newValues: result.recordset?.[0] || {
+                bs_year,
+                bs_mun,
+                bs_brgy,
+                bsamount,
+                bs_natureofpayment,
+                bs_chkdate,
+                bs_chkno,
+                bs_claimedby,
+                bs_claimeddate,
+                bs_datereturned,
+            },
+        });
 
         res.status(201).json(successResponse(null, 'Payment record created successfully'));
     })
@@ -173,6 +193,28 @@ router.put(
             bs_datereturned,
         } = req.body;
 
+        const existing = await executeQuery<BarangayPaymentRecord>(
+            `SELECT 
+                [bs_ctrlno],
+                [bs_chkdate],
+                [bs_chkno],
+                [bs_brgy],
+                [bs_mun],
+                [bs_natureofpayment],
+                [bs_year],
+                [bsamount],
+                [bs_claimedby],
+                [bs_claimeddate],
+                [bs_datereturned]
+            FROM [tbl_brgypayment]
+            WHERE [bs_ctrlno] = @ctrlno`,
+            { ctrlno }
+        );
+
+        if (existing.recordset.length === 0) {
+            throw new ApiError(404, 'Payment record not found');
+        }
+
         const result = await executeQuery(
             `UPDATE [tbl_brgypayment] SET
                 [bsamount] = COALESCE(@bsamount, [bsamount]),
@@ -199,6 +241,32 @@ router.put(
             throw new ApiError(404, 'Payment record not found');
         }
 
+        const updated = await executeQuery<BarangayPaymentRecord>(
+            `SELECT 
+                [bs_ctrlno],
+                [bs_chkdate],
+                [bs_chkno],
+                [bs_brgy],
+                [bs_mun],
+                [bs_natureofpayment],
+                [bs_year],
+                [bsamount],
+                [bs_claimedby],
+                [bs_claimeddate],
+                [bs_datereturned]
+            FROM [tbl_brgypayment]
+            WHERE [bs_ctrlno] = @ctrlno`,
+            { ctrlno }
+        );
+
+        await logActivity(req, {
+            action: 'UPDATE',
+            tableName: 'tbl_brgypayment',
+            recordId: ctrlno,
+            oldValues: existing.recordset[0],
+            newValues: updated.recordset?.[0] || null,
+        });
+
         res.json(successResponse(null, 'Payment record updated successfully'));
     })
 );
@@ -216,6 +284,28 @@ router.delete(
     asyncHandler(async (req: Request, res: Response) => {
         const { ctrlno } = req.params;
 
+        const existing = await executeQuery<BarangayPaymentRecord>(
+            `SELECT 
+                [bs_ctrlno],
+                [bs_chkdate],
+                [bs_chkno],
+                [bs_brgy],
+                [bs_mun],
+                [bs_natureofpayment],
+                [bs_year],
+                [bsamount],
+                [bs_claimedby],
+                [bs_claimeddate],
+                [bs_datereturned]
+            FROM [tbl_brgypayment]
+            WHERE [bs_ctrlno] = @ctrlno`,
+            { ctrlno }
+        );
+
+        if (existing.recordset.length === 0) {
+            throw new ApiError(404, 'Payment record not found');
+        }
+
         const result = await executeQuery(
             `DELETE FROM [tbl_brgypayment] WHERE [bs_ctrlno] = @ctrlno`,
             { ctrlno }
@@ -224,6 +314,13 @@ router.delete(
         if (result.rowsAffected[0] === 0) {
             throw new ApiError(404, 'Payment record not found');
         }
+
+        await logActivity(req, {
+            action: 'DELETE',
+            tableName: 'tbl_brgypayment',
+            recordId: ctrlno,
+            oldValues: existing.recordset[0],
+        });
 
         res.json(successResponse(null, 'Payment record deleted successfully'));
     })
@@ -270,4 +367,3 @@ router.get(
 );
 
 export default router;
-

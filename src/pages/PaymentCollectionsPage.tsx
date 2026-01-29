@@ -42,6 +42,7 @@ import {
 import { FiTrash2, FiPrinter, FiSave, FiDollarSign, FiCreditCard, FiXCircle, FiSettings } from 'react-icons/fi';
 
 import { API_BASE_URL } from '../config/api';
+import { getAuditHeaders } from '../utils/auditHeaders';
 
 /**
  * Fee item interface
@@ -75,14 +76,19 @@ const formatCurrency = (amount: number): string => {
   }).format(amount);
 };
 
-import { ReceiptPreview } from '../components/ReceiptPreview';
+import { ReceiptData, ReceiptPrintable } from '../components/ReceiptPreview';
+import { RMunPrintable, RMunReceiptData } from '../components/RMunPreview';
 import { PrinterCalibration } from '../components/PrinterCalibration';
 
 /**
  * Payment Collections Page
  * Form for creating and managing payment collection records
  */
-export const PaymentCollectionsPage = () => {
+interface PaymentCollectionsPageProps {
+  canCancelPayment: boolean;
+}
+
+export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsPageProps) => {
   // Theme colors
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
@@ -97,22 +103,11 @@ export const PaymentCollectionsPage = () => {
   // Calibration Modal State
   const [showCalibration, setShowCalibration] = useState(false);
 
-  // Receipt Preview State
-  const [showReceipt, setShowReceipt] = useState(false);
-  const [receiptData, setReceiptData] = useState<{
-    clientName: string;
-    date: string;
-    items: Array<{ description: string; amount: number }>;
-    totalAmount: number;
-    payments: Array<{
-      mode: string;
-      amount: number;
-      description?: string;
-      checkDate?: string;
-      checkNo?: string;
-    }>;
-    teller?: string;
-  } | null>(null);
+  // Print Modal State
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const [rMunReceiptData, setRMunReceiptData] = useState<RMunReceiptData | null>(null);
+  const [nextOrProvShare, setNextOrProvShare] = useState<string | null>(null);
 
   // Form state
   const controlNoPrefix = 'AOP'; // Fixed prefix
@@ -121,6 +116,8 @@ export const PaymentCollectionsPage = () => {
   const [clientName, setClientName] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [nature, setNature] = useState('');
+  const [barangay, setBarangay] = useState('');
+  const [municipality, setMunicipality] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Fee items state
@@ -159,6 +156,8 @@ export const PaymentCollectionsPage = () => {
   // Calculated totals
   const feeTotal = feeItems.reduce((sum, item) => sum + item.amount, 0);
   const paymentTotal = payments.reduce((sum, p) => sum + p.amount, 0);
+  const receiptPrintId = 'receipt-printable';
+  const rmunPrintId = 'rmun-printable';
 
   // Generate unique ID
   const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -167,6 +166,8 @@ export const PaymentCollectionsPage = () => {
   const resetFormData = () => {
     setClientName('');
     setNature('');
+    setBarangay('');
+    setMunicipality('');
     setFeeItems([]);
     setPayments([]);
     setOrProvShare('');
@@ -218,8 +219,81 @@ export const PaymentCollectionsPage = () => {
     setPayments(payments.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
   };
 
-  // Handle save and print
-  const handleSaveAndPrint = async () => {
+  const printElementById = (elementId: string) => {
+    const receiptElement = document.getElementById(elementId);
+    if (!receiptElement) return;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    const iframeDoc = iframe.contentWindow?.document;
+    if (!iframeDoc) {
+      document.body.removeChild(iframe);
+      return;
+    }
+
+    const styles = Array.from(document.styleSheets)
+      .map((styleSheet) => {
+        try {
+          return Array.from(styleSheet.cssRules)
+            .map((rule) => rule.cssText)
+            .join('\n');
+        } catch {
+          return '';
+        }
+      })
+      .join('\n');
+
+    iframeDoc.open();
+    iframeDoc.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Receipt</title>
+        <style>
+          ${styles}
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          @page {
+            size: auto;
+            margin: 2mm;
+          }
+          @media print {
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+            #${elementId} {
+              margin: 0 !important;
+              box-shadow: none !important;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        ${receiptElement.outerHTML}
+      </body>
+      </html>
+    `);
+    iframeDoc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+      }, 1000);
+    }, 250);
+  };
+
+  // Handle save
+  const handleSave = async () => {
     if (!controlNoNumber || !clientName || !nature) {
       toast({
         title: 'Validation Error',
@@ -242,13 +316,22 @@ export const PaymentCollectionsPage = () => {
       return;
     }
 
+    if (nature.includes('Government Share') && !orMunShare) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please enter the OR - Municipal Share number.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await fetch(`${API_BASE_URL}/collections/save/${controlNoNumber}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getAuditHeaders(),
         body: JSON.stringify({
           orProvShare: orProvShare,
           date: date,
@@ -274,32 +357,52 @@ export const PaymentCollectionsPage = () => {
         isClosable: true,
       });
 
-      // Prepare receipt data before resetting
+      const isGovernmentShare = nature.includes('Government Share');
+      const previewMultiplier = isGovernmentShare ? 0.3 : 1;
+      const previewItems = feeItems.map((f) => ({
+        description: f.description,
+        amount: Number((f.amount * previewMultiplier).toFixed(2)),
+      }));
+      const previewTotalAmount = Number((feeTotal * previewMultiplier).toFixed(2));
+      const previewPayments = payments.map((p) => ({
+        mode: p.mode,
+        amount: Number((p.amount * previewMultiplier).toFixed(2)),
+        description: p.description,
+        checkDate: p.checkDate,
+        checkNo: p.checkNo || '',
+      }));
+
+      // Prepare receipt data for printing
       setReceiptData({
         clientName,
         date,
-        items: feeItems.map(f => ({ description: f.description, amount: f.amount })),
+        nature,
+        items: previewItems,
+        totalAmount: previewTotalAmount,
+        payments: previewPayments,
+        teller: 'Admin', // Placeholder for now
+      });
+
+      setRMunReceiptData({
+        clientName,
+        date,
+        nature,
+        municipality,
+        barangay,
+        items: feeItems.map((f) => ({ description: f.description, amount: f.amount })),
         totalAmount: feeTotal,
-        payments: payments.map(p => ({
+        payments: payments.map((p) => ({
           mode: p.mode,
           amount: p.amount,
           description: p.description,
           checkDate: p.checkDate,
-          checkNo: p.checkNo || ''
+          checkNo: p.checkNo || '',
         })),
         teller: 'Admin', // Placeholder for now
       });
-      setShowReceipt(true);
 
-      // Reset form for next transaction, keeping the incremented OR number
-      setControlNoNumber('');
-      setClientName('');
-      setNature('');
-      setFeeItems([]);
-      setPayments([]);
-      setOrProvShare(nextOrNo);
-      setOrMunShare('');
-      setIsPaid(false);
+      setNextOrProvShare(nextOrNo);
+      setShowPrintModal(true);
     } catch (error) {
       console.error('Error saving payment:', error);
       toast({
@@ -312,6 +415,21 @@ export const PaymentCollectionsPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDone = () => {
+    setShowPrintModal(false);
+    setReceiptData(null);
+    setRMunReceiptData(null);
+    setControlNoNumber('');
+    resetFormData();
+    if (nextOrProvShare !== null) {
+      setOrProvShare(nextOrProvShare);
+    }
+    setNextOrProvShare(null);
+    setTimeout(() => {
+      controlNoInputRef.current?.focus();
+    }, 100);
   };
 
   // Fetch assessment data based on control number
@@ -340,6 +458,8 @@ export const PaymentCollectionsPage = () => {
       // Set client name and nature from API response
       setClientName(headerResult.data.clientName);
       setNature(headerResult.data.nature);
+      setBarangay(headerResult.data.barangay || '');
+      setMunicipality(headerResult.data.municipality || '');
 
       let isRecordPaid = false;
       // Set OR numbers if available
@@ -416,6 +536,7 @@ export const PaymentCollectionsPage = () => {
       // Clear fields on error
       setClientName('');
       setNature('');
+      setBarangay('');
       setFeeItems([]);
     } finally {
       setLoading(false);
@@ -433,13 +554,57 @@ export const PaymentCollectionsPage = () => {
   return (
     <Box maxW="1400px" mx="auto">
       {receiptData && (
-        <ReceiptPreview
-          isOpen={showReceipt}
-          onClose={() => setShowReceipt(false)}
-          data={receiptData}
-        />
-
+        <Box position="absolute" left="-10000px" top="-10000px" opacity={0} pointerEvents="none">
+          <ReceiptPrintable data={receiptData} printableId={receiptPrintId} />
+        </Box>
       )}
+      {rMunReceiptData && (
+        <Box position="absolute" left="-10000px" top="-10000px" opacity={0} pointerEvents="none">
+          <RMunPrintable data={rMunReceiptData} printableId={rmunPrintId} />
+        </Box>
+      )}
+      <Modal isOpen={showPrintModal} onClose={handleDone} isCentered closeOnOverlayClick={false} size="md">
+        <ModalOverlay />
+        <ModalContent borderRadius="xl" boxShadow="xl">
+          <ModalHeader pb={0}>Ready to Print</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pt={2}>
+            <Text color="gray.600">
+              Payment saved successfully. Choose which documents to print before finishing.
+            </Text>
+          </ModalBody>
+          <ModalFooter>
+            <Box w="full">
+              <Grid templateColumns={{ base: '1fr', sm: '1fr 1fr' }} gap={3} mb={3}>
+                <Button
+                  leftIcon={<FiPrinter />}
+                  colorScheme="blue"
+                  onClick={() => printElementById(receiptPrintId)}
+                  isDisabled={!receiptData}
+                >
+                  Print Receipt
+                </Button>
+                <Button
+                  leftIcon={<FiPrinter />}
+                  colorScheme="orange"
+                  onClick={() => printElementById(rmunPrintId)}
+                  isDisabled={
+                    !rMunReceiptData ||
+                    !nature.includes('Government Share') ||
+                    feeTotal !== paymentTotal ||
+                    !orMunShare
+                  }
+                >
+                  Print Mun & Brgy
+                </Button>
+              </Grid>
+              <Button w="full" variant="outline" onClick={handleDone}>
+                Done
+              </Button>
+            </Box>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
       {showCalibration && (
         <PrinterCalibration
           isOpen={showCalibration}
@@ -477,7 +642,7 @@ export const PaymentCollectionsPage = () => {
         <CardBody p={4}>
           {/* Form Fields Section */}
           <Grid
-            templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' }}
+            templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' }}
             gap={4}
             mb={4}
           >
@@ -513,6 +678,29 @@ export const PaymentCollectionsPage = () => {
               </FormControl>
             </GridItem>
 
+            {/* Date */}
+            <GridItem colSpan={1}>
+              <FormControl>
+                <FormLabel color={labelColor} fontWeight="medium" mb={1} fontSize="sm">
+                  Date
+                </FormLabel>
+                <Input
+                  size="md"
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  bg={inputBg}
+                  borderColor={borderColor}
+                  _hover={{ borderColor: 'blue.400' }}
+                  _focus={{
+                    borderColor: 'blue.500',
+                    boxShadow: '0 0 0 1px var(--chakra-colors-blue-500)',
+                  }}
+                  isDisabled={isPaid}
+                />
+              </FormControl>
+            </GridItem>
+
             {/* Client Name */}
             <GridItem colSpan={{ base: 1, lg: 2 }}>
               <FormControl>
@@ -531,25 +719,38 @@ export const PaymentCollectionsPage = () => {
               </FormControl>
             </GridItem>
 
-            {/* Date */}
-            <GridItem>
+            {/* Municipality */}
+            <GridItem colSpan={1}>
               <FormControl>
                 <FormLabel color={labelColor} fontWeight="medium" mb={1} fontSize="sm">
-                  Date
+                  Municipality
                 </FormLabel>
                 <Input
                   size="md"
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  value={municipality}
+                  isReadOnly
                   bg={inputBg}
                   borderColor={borderColor}
-                  _hover={{ borderColor: 'blue.400' }}
-                  _focus={{
-                    borderColor: 'blue.500',
-                    boxShadow: '0 0 0 1px var(--chakra-colors-blue-500)',
-                  }}
-                  isDisabled={isPaid}
+                  fontWeight="medium"
+                  _readOnly={{ cursor: 'default' }}
+                />
+              </FormControl>
+            </GridItem>
+
+            {/* Barangay */}
+            <GridItem colSpan={1}>
+              <FormControl>
+                <FormLabel color={labelColor} fontWeight="medium" mb={1} fontSize="sm">
+                  Barangay
+                </FormLabel>
+                <Input
+                  size="md"
+                  value={barangay}
+                  isReadOnly
+                  bg={inputBg}
+                  borderColor={borderColor}
+                  fontWeight="medium"
+                  _readOnly={{ cursor: 'default' }}
                 />
               </FormControl>
             </GridItem>
@@ -872,139 +1073,135 @@ export const PaymentCollectionsPage = () => {
           </Box>
 
           {/* Action Buttons */}
-          {/* Action Buttons */}
           <Flex justify="flex-end" gap={3} pt={3} borderTop="1px" borderColor={borderColor}>
-            <Button
-              leftIcon={<FiXCircle />}
-              colorScheme="red"
-              size="md"
-              isDisabled={!isPaid || loading}
-              onClick={() => {
-                if (!controlNoNumber) {
-                  toast({
-                    title: 'Error',
-                    description: 'No control number specified.',
-                    status: 'error',
-                    duration: 3000,
-                    isClosable: true,
-                  });
-                  return;
-                }
-                setShowCancelModal(true);
-              }}
-              boxShadow="md"
-              _hover={{ transform: 'translateY(-1px)', boxShadow: 'lg' }}
-              transition="all 0.2s"
-            >
-              Cancel Payment
-            </Button>
+            {canCancelPayment && (
+              <>
+                <Button
+                  leftIcon={<FiXCircle />}
+                  colorScheme="red"
+                  size="md"
+                  isDisabled={!isPaid || loading}
+                  onClick={() => {
+                    if (!controlNoNumber) {
+                      toast({
+                        title: 'Error',
+                        description: 'No control number specified.',
+                        status: 'error',
+                        duration: 3000,
+                        isClosable: true,
+                      });
+                      return;
+                    }
+                    setShowCancelModal(true);
+                  }}
+                  boxShadow="md"
+                  _hover={{ transform: 'translateY(-1px)', boxShadow: 'lg' }}
+                  transition="all 0.2s"
+                >
+                  Cancel Payment
+                </Button>
 
-            {/* Cancel Payment Confirmation Modal */}
-            <Modal isOpen={showCancelModal} onClose={() => setShowCancelModal(false)} isCentered>
-              <ModalOverlay />
-              <ModalContent>
-                <ModalHeader>Confirm Cancellation</ModalHeader>
-                <ModalCloseButton />
-                <ModalBody>
-                  <Text>Are you sure you want to cancel this payment?</Text>
-                  <Text fontWeight="bold" mt={2}>This action cannot be undone.</Text>
-                </ModalBody>
-                <ModalFooter>
-                  <Button variant="ghost" mr={3} onClick={() => setShowCancelModal(false)}>
-                    No, Keep Payment
-                  </Button>
-                  <Button
-                    colorScheme="red"
-                    isLoading={loading}
-                    onClick={async () => {
-                      setShowCancelModal(false);
-                      setLoading(true);
-                      try {
-                        const response = await fetch(`${API_BASE_URL}/collections/cancel/${controlNoNumber}`, {
-                          method: 'DELETE',
-                        });
+                {/* Cancel Payment Confirmation Modal */}
+                <Modal isOpen={showCancelModal} onClose={() => setShowCancelModal(false)} isCentered>
+                  <ModalOverlay />
+                  <ModalContent>
+                    <ModalHeader>Confirm Cancellation</ModalHeader>
+                    <ModalCloseButton />
+                    <ModalBody>
+                      <Text>Are you sure you want to cancel this payment?</Text>
+                      <Text fontWeight="bold" mt={2}>
+                        This action cannot be undone.
+                      </Text>
+                    </ModalBody>
+                    <ModalFooter>
+                      <Button variant="ghost" mr={3} onClick={() => setShowCancelModal(false)}>
+                        No, Keep Payment
+                      </Button>
+                      <Button
+                        colorScheme="red"
+                        isLoading={loading}
+                        onClick={async () => {
+                          setShowCancelModal(false);
+                          setLoading(true);
+                          try {
+                            const response = await fetch(
+                              `${API_BASE_URL}/collections/cancel/${controlNoNumber}`,
+                              {
+                                method: 'DELETE',
+                                headers: getAuditHeaders(false),
+                              }
+                            );
 
-                        const result = await response.json();
+                            const result = await response.json();
 
-                        if (!response.ok) {
-                          throw new Error(result.message || 'Failed to cancel payment');
-                        }
+                            if (!response.ok) {
+                              throw new Error(result.message || 'Failed to cancel payment');
+                            }
 
-                        toast({
-                          title: 'Payment Cancelled',
-                          description: 'The payment has been cancelled successfully.',
-                          status: 'success',
-                          duration: 3000,
-                          isClosable: true,
-                        });
+                            toast({
+                              title: 'Payment Cancelled',
+                              description: 'The payment has been cancelled successfully.',
+                              status: 'success',
+                              duration: 3000,
+                              isClosable: true,
+                            });
 
-                        // Reset the form
-                        setControlNoNumber('');
-                        setClientName('');
-                        setNature('');
-                        setFeeItems([]);
-                        setPayments([]);
-                        setOrProvShare('');
-                        setOrMunShare('');
-                        setIsPaid(false);
-                        setDate(new Date().toISOString().split('T')[0]);
+                            // Reset the form
+                            setControlNoNumber('');
+                            setClientName('');
+                            setNature('');
+                            setBarangay('');
+                            setFeeItems([]);
+                            setPayments([]);
+                            setOrProvShare('');
+                            setOrMunShare('');
+                            setIsPaid(false);
+                            setDate(new Date().toISOString().split('T')[0]);
 
-                        // Focus the control number input
-                        setTimeout(() => {
-                          controlNoInputRef.current?.focus();
-                        }, 100);
-                      } catch (error) {
-                        console.error('Error cancelling payment:', error);
-                        toast({
-                          title: 'Error',
-                          description: error instanceof Error ? error.message : 'Failed to cancel payment',
-                          status: 'error',
-                          duration: 3000,
-                          isClosable: true,
-                        });
-                      } finally {
-                        setLoading(false);
-                      }
-                    }}
-                  >
-                    Yes, Cancel Payment
-                  </Button>
-                </ModalFooter>
-              </ModalContent>
-            </Modal>
+                            // Focus the control number input
+                            setTimeout(() => {
+                              controlNoInputRef.current?.focus();
+                            }, 100);
+                          } catch (error) {
+                            console.error('Error cancelling payment:', error);
+                            toast({
+                              title: 'Error',
+                              description:
+                                error instanceof Error ? error.message : 'Failed to cancel payment',
+                              status: 'error',
+                              duration: 3000,
+                              isClosable: true,
+                            });
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                      >
+                        Yes, Cancel Payment
+                      </Button>
+                    </ModalFooter>
+                  </ModalContent>
+                </Modal>
+              </>
+            )}
 
             <Button
               leftIcon={<FiSave />}
               colorScheme="green"
               size="md"
-              onClick={handleSaveAndPrint}
+              onClick={handleSave}
               boxShadow="md"
               _hover={{ transform: 'translateY(-1px)', boxShadow: 'lg' }}
               transition="all 0.2s"
-              isDisabled={isPaid || !clientName || feeTotal !== paymentTotal || !orProvShare}
+              isDisabled={
+                isPaid ||
+                !clientName ||
+                feeTotal !== paymentTotal ||
+                !orProvShare ||
+                (nature.includes('Government Share') && !orMunShare)
+              }
             >
-              Save and Print
-            </Button>
-
-            <Button
-              leftIcon={<FiPrinter />}
-              colorScheme="orange"
-              size="md"
-              isDisabled={isPaid || !nature.includes('Government Share')}
-              onClick={() => {
-                toast({
-                  title: 'Print',
-                  description: 'Printing Municipal and Barangay reports...',
-                  status: 'info',
-                  duration: 2000,
-                  isClosable: true,
-                });
-              }}
-              boxShadow="md"
-              _hover={{ transform: 'translateY(-1px)', boxShadow: 'lg' }}
-              transition="all 0.2s"
-            >
-              Print (Mun & Brgy)
+              Save
             </Button>
           </Flex>
         </CardBody>

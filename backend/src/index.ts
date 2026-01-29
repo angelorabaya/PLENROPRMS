@@ -25,7 +25,7 @@ app.use(cors({
     origin: config.cors.origin,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-log-user', 'x-log-cname'],
 }));
 
 // Rate limiting
@@ -138,6 +138,7 @@ const startServer = async () => {
                 console.log('🚀 =============================================');
                 console.log(`🚀 PLENRO-PTO Backend Server (HTTPS)`);
                 console.log(`🚀 Environment: ${config.nodeEnv}`);
+                console.log(`🚀 DB Server: ${config.db.server}:${config.db.port}`);
                 console.log(`🚀 Port: ${config.port}`);
                 console.log(`🚀 API URL: ${protocol}://localhost:${config.port}/api`);
                 console.log(`🚀 Network: ${protocol}://0.0.0.0:${config.port}/api`);
@@ -152,6 +153,7 @@ const startServer = async () => {
                 console.log('🚀 =============================================');
                 console.log(`🚀 PLENRO-PTO Backend Server`);
                 console.log(`🚀 Environment: ${config.nodeEnv}`);
+                console.log(`🚀 DB Server: ${config.db.server}:${config.db.port}`);
                 console.log(`🚀 Port: ${config.port}`);
                 console.log(`🚀 API URL: ${protocol}://localhost:${config.port}/api`);
                 console.log(`🚀 Network: ${protocol}://0.0.0.0:${config.port}/api`);

@@ -13,10 +13,12 @@ import {
 } from '@chakra-ui/react';
 import { FiPrinter } from 'react-icons/fi';
 
-export interface ReceiptData {
+export interface RMunReceiptData {
     clientName: string;
     date: string;
     nature?: string;
+    municipality?: string;
+    barangay?: string;
     items: Array<{ description: string; amount: number }>;
     totalAmount: number;
     payments: Array<{
@@ -29,10 +31,10 @@ export interface ReceiptData {
     teller?: string;
 }
 
-interface ReceiptPreviewProps {
+interface RMunPreviewProps {
     isOpen: boolean;
     onClose: () => void;
-    data: ReceiptData;
+    data: RMunReceiptData;
 }
 
 const numberToWords = (amount: number): string => {
@@ -102,6 +104,8 @@ const formatDate = (dateStr: string): string => {
     const date = new Date(`${dateStr}T00:00:00`);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
+
+const roundToTwo = (value: number) => Number(value.toFixed(2));
 
 const printElement = (elementId: string) => {
     const receiptElement = document.getElementById(elementId);
@@ -176,9 +180,9 @@ const printElement = (elementId: string) => {
     }, 250);
 };
 
-export const ReceiptPrintable: React.FC<{ data: ReceiptData; printableId?: string }> = ({
+export const RMunPrintable: React.FC<{ data: RMunReceiptData; printableId?: string }> = ({
     data,
-    printableId = 'printable-receipt',
+    printableId = 'rmun-printable',
 }) => {
     const formatAmount = (num: number) => {
         return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -194,6 +198,28 @@ export const ReceiptPrintable: React.FC<{ data: ReceiptData; printableId?: strin
         const savedY = parseFloat(localStorage.getItem('receipt_offsetY') || '0');
         return Number.isNaN(savedY) ? 0 : savedY;
     });
+
+    const municipalityAmount = roundToTwo(data.totalAmount * 0.3);
+    const barangayParts = (data.barangay || '')
+        .split('/')
+        .map((part) => part.trim())
+        .filter(Boolean);
+    const hasTwoBarangays = barangayParts.length >= 2;
+    const barangayAmount = roundToTwo(data.totalAmount * (hasTwoBarangays ? 0.2 : 0.4));
+    const barangayLines = hasTwoBarangays
+        ? barangayParts.slice(0, 2).map((name) => ({
+              label: `Barangay of ${name} (20%)`,
+              amount: barangayAmount,
+          }))
+        : [
+              {
+                  label: `Barangay of ${data.barangay || '-'} (40%)`,
+                  amount: barangayAmount,
+              },
+          ];
+    const sharesTotal = roundToTwo(
+        municipalityAmount + barangayLines.reduce((sum, line) => sum + line.amount, 0)
+    );
 
     return (
         <>
@@ -293,23 +319,49 @@ export const ReceiptPrintable: React.FC<{ data: ReceiptData; printableId?: strin
                                 >
                                     {item.description}
                                 </Text>
-                                <Text
-                                    as="span"
-                                    position="absolute"
-                                    left="245px"
-                                    top="0"
-                                    textAlign="right"
-                                    w="80px"
-                                >
-                                    {formatAmount(item.amount)}
-                                </Text>
                             </Box>
                         );
                     })}
 
-                    <Box mt={2} position="relative" h="20px">
-                        <Text position="absolute" left="245px" fontWeight="bold" w="80px" textAlign="right">
-                            {formatAmount(data.totalAmount)}
+                    <Box mt={2}>
+                        <Box key="municipality-line" position="relative" height="auto" minH="18px">
+                            <Text
+                                as="span"
+                                display="inline-block"
+                                w="230px"
+                                verticalAlign="top"
+                                lineHeight="1.2"
+                            >
+                                Municipality of {data.municipality || '-'} (30%)
+                            </Text>
+                            <Text as="span" position="absolute" left="245px" top="0" textAlign="right" w="80px">
+                                {formatAmount(municipalityAmount)}
+                            </Text>
+                        </Box>
+                        {barangayLines.map((line, index) => (
+                            <Box key={`barangay-${index}`} position="relative" height="auto" minH="18px">
+                                <Text
+                                    as="span"
+                                    display="inline-block"
+                                    w="230px"
+                                    verticalAlign="top"
+                                    lineHeight="1.2"
+                                >
+                                    {line.label}
+                                </Text>
+                                <Text as="span" position="absolute" left="245px" top="0" textAlign="right" w="80px">
+                                    {formatAmount(line.amount)}
+                                </Text>
+                            </Box>
+                        ))}
+                    </Box>
+
+                    <Box mt={2} display="flex" alignItems="center" h="20px">
+                        <Text w="230px" lineHeight="1.2" fontWeight="bold">
+                            Total Share
+                        </Text>
+                        <Text w="80px" ml="15px" lineHeight="1.2" fontWeight="bold" textAlign="right">
+                            {formatAmount(sharesTotal)}
                         </Text>
                     </Box>
 
@@ -354,7 +406,7 @@ export const ReceiptPrintable: React.FC<{ data: ReceiptData; printableId?: strin
                     </Box>
 
                     <Box mt={4}>
-                        <Text fontStyle="italic">{numberToWords(data.totalAmount)}</Text>
+                        <Text fontStyle="italic">{numberToWords(sharesTotal)}</Text>
                     </Box>
 
                     <Box mt={1}>
@@ -393,8 +445,8 @@ export const ReceiptPrintable: React.FC<{ data: ReceiptData; printableId?: strin
     );
 };
 
-export const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({ isOpen, onClose, data }) => {
-    const printableId = 'receipt-preview';
+export const RMunPreview: React.FC<RMunPreviewProps> = ({ isOpen, onClose, data }) => {
+    const printableId = 'rmun-preview';
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} size="xl">
@@ -403,7 +455,7 @@ export const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({ isOpen, onClose,
                 <ModalHeader>Receipt Preview</ModalHeader>
                 <ModalCloseButton />
                 <ModalBody bg="gray.100" p={4} display="flex" justifyContent="center">
-                    <ReceiptPrintable data={data} printableId={printableId} />
+                    <RMunPrintable data={data} printableId={printableId} />
                 </ModalBody>
 
                 <ModalFooter>

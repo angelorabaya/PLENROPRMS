@@ -5,11 +5,41 @@ import { asyncHandler, validate, ApiError } from '../middleware/index.js';
 import {
     successResponse,
     paginatedResponse,
-    parsePagination
+    parsePagination,
+    logActivity
 } from '../utils/index.js';
 import type { PaymentCollection } from '../types/index.js';
 
 const router = Router();
+
+const fetchAssessmentPayments = async (controlNo: string) => {
+    const result = await executeQuery<{
+        aop_mod: string;
+        b_name: string | null;
+        aop_chkdate: string | null;
+        aop_chkno: string | null;
+        aop_amount: number;
+    }>(
+        `SELECT
+            am.aop_mod,
+            b.b_name,
+            am.aop_chkdate,
+            am.aop_chkno,
+            am.aop_amount
+        FROM tbl_assessmentmod AS am
+        LEFT JOIN tbl_banks AS b ON am.aop_bankid = b.b_ctrlno
+        WHERE am.aop_control = @controlNo`,
+        { controlNo }
+    );
+
+    return result.recordset.map((item) => ({
+        mode: (String(item.aop_mod).trim() as 'Cash' | 'Check') || 'Cash',
+        amount: item.aop_amount,
+        description: item.b_name || '',
+        checkDate: item.aop_chkdate ? new Date(item.aop_chkdate).toISOString().split('T')[0] : '',
+        checkNo: item.aop_chkno || '',
+    }));
+};
 
 /**
  * GET /api/collections/banks
@@ -48,13 +78,17 @@ router.get(
             aop_nature: string;
             aop_orno: string | null;
             aop_ordate: Date | null;
+            aop_brgy: string | null;
+            aop_mun: string | null;
         }>(
             `SELECT
                 ah.aop_control,
                 c.ph_cname,
                 ah.aop_nature,
                 ah.aop_orno,
-                ah.aop_ordate
+                ah.aop_ordate,
+                ah.aop_brgy,
+                ah.aop_mun
             FROM tbl_assessmenthdr AS ah
             INNER JOIN tbl_client AS c
                 ON ah.aop_clientid = c.ph_ctrlno
@@ -86,6 +120,8 @@ router.get(
             controlNo: record.aop_control,
             clientName: record.ph_cname,
             nature: record.aop_nature,
+            barangay: record.aop_brgy,
+            municipality: record.aop_mun,
             orProvincialShare,
             orMunicipalShare,
             orDate: record.aop_ordate ? new Date(record.aop_ordate).toISOString().split('T')[0] : null,
@@ -211,8 +247,8 @@ router.put(
         const fullControlNo = `AOP${controlNo}`;
 
         // Check if the record exists first
-        const checkResult = await executeQuery<{ aop_control: string; aop_orno: string | null }>(
-            `SELECT aop_control, aop_orno FROM dbo.tbl_assessmenthdr WHERE aop_control = @controlNo`,
+        const checkResult = await executeQuery<{ aop_control: string; aop_orno: string | null; aop_ordate: Date | null }>(
+            `SELECT aop_control, aop_orno, aop_ordate FROM dbo.tbl_assessmenthdr WHERE aop_control = @controlNo`,
             { controlNo: fullControlNo }
         );
 
@@ -224,6 +260,12 @@ router.put(
         if (checkResult.recordset[0].aop_orno) {
             throw new ApiError(400, 'This record has already been paid');
         }
+
+        const oldPayments = await fetchAssessmentPayments(fullControlNo);
+        const oldValues = {
+            header: checkResult.recordset[0],
+            payments: oldPayments,
+        };
 
         // Update the assessment header with OR number and date
         await executeQuery(
@@ -278,6 +320,23 @@ router.put(
             }
         }
 
+        const updatedHeader = await executeQuery<{ aop_control: string; aop_orno: string | null; aop_ordate: Date | null }>(
+            `SELECT aop_control, aop_orno, aop_ordate FROM dbo.tbl_assessmenthdr WHERE aop_control = @controlNo`,
+            { controlNo: fullControlNo }
+        );
+        const newPayments = await fetchAssessmentPayments(fullControlNo);
+
+        await logActivity(req, {
+            action: 'UPDATE',
+            tableName: 'tbl_assessmenthdr',
+            recordId: fullControlNo,
+            oldValues,
+            newValues: {
+                header: updatedHeader.recordset[0] || null,
+                payments: newPayments,
+            },
+        });
+
         res.json(successResponse(
             { controlNo: fullControlNo, orNo: orProvShare, orDate: date },
             'Payment saved successfully'
@@ -298,8 +357,8 @@ router.delete(
         const fullControlNo = `AOP${controlNo}`;
 
         // Check if the record exists first
-        const checkResult = await executeQuery<{ aop_control: string; aop_orno: string | null }>(
-            `SELECT aop_control, aop_orno FROM dbo.tbl_assessmenthdr WHERE aop_control = @controlNo`,
+        const checkResult = await executeQuery<{ aop_control: string; aop_orno: string | null; aop_ordate: Date | null }>(
+            `SELECT aop_control, aop_orno, aop_ordate FROM dbo.tbl_assessmenthdr WHERE aop_control = @controlNo`,
             { controlNo: fullControlNo }
         );
 
@@ -311,6 +370,12 @@ router.delete(
         if (!checkResult.recordset[0].aop_orno) {
             throw new ApiError(400, 'This record has no payment to cancel');
         }
+
+        const oldPayments = await fetchAssessmentPayments(fullControlNo);
+        const oldValues = {
+            header: checkResult.recordset[0],
+            payments: oldPayments,
+        };
 
         // Clear OR number and OR date in assessment header
         await executeQuery(
@@ -327,6 +392,17 @@ router.delete(
              WHERE aop_control = @controlNo`,
             { controlNo: fullControlNo }
         );
+
+        await logActivity(req, {
+            action: 'DELETE',
+            tableName: 'tbl_assessmenthdr',
+            recordId: fullControlNo,
+            oldValues,
+            newValues: {
+                header: { aop_control: fullControlNo, aop_orno: null, aop_ordate: null },
+                payments: [],
+            },
+        });
 
         res.json(successResponse(
             { controlNo: fullControlNo },
