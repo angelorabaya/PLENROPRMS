@@ -79,6 +79,7 @@ router.get(
             aop_orno: string | null;
             aop_ordate: Date | null;
             aop_brgy: string | null;
+            aop_brgycombo: string | null;
             aop_mun: string | null;
         }>(
             `SELECT
@@ -88,6 +89,7 @@ router.get(
                 ah.aop_orno,
                 ah.aop_ordate,
                 ah.aop_brgy,
+                ah.aop_brgycombo,
                 ah.aop_mun
             FROM tbl_assessmenthdr AS ah
             INNER JOIN tbl_client AS c
@@ -103,6 +105,10 @@ router.get(
         const record = result.recordset[0];
         let orProvincialShare = '';
         let orMunicipalShare = '';
+        const barangay =
+            record.aop_brgycombo && record.aop_brgycombo.trim() !== ''
+                ? record.aop_brgycombo
+                : record.aop_brgy;
 
         if (record.aop_orno) {
             const cleanOr = (or: string) => or.replace(/[Bb]/g, '').trim();
@@ -120,7 +126,7 @@ router.get(
             controlNo: record.aop_control,
             clientName: record.ph_cname,
             nature: record.aop_nature,
-            barangay: record.aop_brgy,
+            barangay: barangay,
             municipality: record.aop_mun,
             orProvincialShare,
             orMunicipalShare,

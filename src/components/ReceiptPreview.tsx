@@ -167,13 +167,42 @@ const printElement = (elementId: string) => {
     `);
     iframeDoc.close();
 
-    setTimeout(() => {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
+    const doPrint = async () => {
+        try {
+            // Fetch server datetime right before printing
+            const dtResponse = await fetch('/api/system/datetime');
+            const dtResult = await dtResponse.json();
+            if (dtResult.success && dtResult.data?.datetime) {
+                const elements = iframeDoc.getElementsByClassName('print-datetime-placeholder');
+                const dt = new Date(dtResult.data.datetime);
+                const formatDt = dt.toLocaleString('en-US', {
+                    timeZone: 'Asia/Manila',
+                    month: '2-digit',
+                    day: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true,
+                });
+                for (let i = 0; i < elements.length; i++) {
+                    elements[i].textContent = formatDt;
+                }
+            }
+        } catch (e) {
+            // fallback to client time if server fails
+        }
+
         setTimeout(() => {
-            document.body.removeChild(iframe);
-        }, 1000);
-    }, 250);
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+            }, 1000);
+        }, 250);
+    };
+
+    doPrint();
 };
 
 export const ReceiptPrintable: React.FC<{ data: ReceiptData; printableId?: string }> = ({
@@ -360,15 +389,18 @@ export const ReceiptPrintable: React.FC<{ data: ReceiptData; printableId?: strin
                     <Box mt={1}>
                         <Text fontSize="10px">
                             Date/Time Printed:{' '}
-                            {new Date().toLocaleString('en-US', {
-                                month: '2-digit',
-                                day: '2-digit',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit',
-                                hour12: true,
-                            })}
+                            <span className="print-datetime-placeholder">
+                                {new Date().toLocaleString('en-US', {
+                                    timeZone: 'Asia/Manila',
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                    hour12: true,
+                                })}
+                            </span>
                         </Text>
                     </Box>
                 </Box>
@@ -386,7 +418,7 @@ export const ReceiptPrintable: React.FC<{ data: ReceiptData; printableId?: strin
                 )}
 
                 <Text position="absolute" left="220px" top="710px">
-                    {import.meta.env.VITE_RECEIPT_SIGNATORY || data.teller || 'Admin'}
+                    {''}
                 </Text>
             </Box>
         </>

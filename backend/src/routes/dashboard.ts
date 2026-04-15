@@ -60,10 +60,17 @@ router.get(
     '/health',
     asyncHandler(async (_req: Request, res: Response) => {
         const dbConnected = await testConnection();
+        let timestamp = '';
+        if (dbConnected) {
+            const result = await executeQuery<{ dt: string }>(
+                `SELECT CONVERT(varchar(23), DATEADD(hour, 8, GETUTCDATE()), 126) + '+08:00' as dt`
+            );
+            timestamp = result.recordset[0]?.dt || '';
+        }
 
         res.json(successResponse({
             status: 'ok',
-            timestamp: new Date().toISOString(),
+            timestamp: timestamp || new Date().toISOString(), // keep fallback just in case DB is down
             database: dbConnected ? 'connected' : 'disconnected',
         }));
     })
@@ -100,8 +107,8 @@ router.get(
                 dbo.tbl_assessmenthdr
             WHERE 
                 aop_orno IS NOT NULL
-                AND aop_ordate >= DATEFROMPARTS(YEAR(GETDATE()), 1, 1) 
-                AND aop_ordate < DATEFROMPARTS(YEAR(GETDATE()) + 1, 1, 1)`
+                AND aop_ordate >= DATEFROMPARTS(YEAR(DATEADD(hour, 8, GETUTCDATE())), 1, 1) 
+                AND aop_ordate < DATEFROMPARTS(YEAR(DATEADD(hour, 8, GETUTCDATE())) + 1, 1, 1)`
         );
 
         res.json(successResponse({
@@ -120,7 +127,7 @@ router.get(
         const result = await executeQuery<{ BrgyShare: number }>(
             `SELECT SUM(total_share) AS BrgyShare
              FROM View_brgysharesyear
-             WHERE RptYear = YEAR(GETDATE())`
+             WHERE RptYear = YEAR(DATEADD(hour, 8, GETUTCDATE()))`
         );
 
         res.json(successResponse({
@@ -139,7 +146,7 @@ router.get(
         const result = await executeQuery<{ MunShare: number }>(
             `SELECT SUM(total_share) AS MunShare
              FROM View_munshareyear
-             WHERE RptYear = YEAR(GETDATE())`
+             WHERE RptYear = YEAR(DATEADD(hour, 8, GETUTCDATE()))`
         );
 
         res.json(successResponse({
@@ -155,7 +162,8 @@ router.get(
 router.get(
     '/gross-collections',
     asyncHandler(async (_req: Request, res: Response) => {
-        const currentYear = new Date().getFullYear();
+        const yearResult = await executeQuery<{ yr: number }>(`SELECT YEAR(DATEADD(hour, 8, GETUTCDATE())) as yr`);
+        const currentYear = yearResult.recordset[0]?.yr || new Date().getFullYear();
         const previousYear = currentYear - 1;
 
         const result = await executeQuery<{ yr: number; mo: number; total: number }>(

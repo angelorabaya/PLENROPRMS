@@ -39,7 +39,8 @@ export const logActivity = async (req: Request, details: AuditLogDetails): Promi
                 OldValues,
                 NewValues,
                 IPAddress,
-                UserAgent
+                UserAgent,
+                CreatedAt
             ) VALUES (
                 @userId,
                 @userName,
@@ -49,7 +50,8 @@ export const logActivity = async (req: Request, details: AuditLogDetails): Promi
                 @oldValues,
                 @newValues,
                 @ipAddress,
-                @userAgent
+                @userAgent,
+                DATEADD(hour, 8, GETUTCDATE())
             )`,
             {
                 userId: userId || null,

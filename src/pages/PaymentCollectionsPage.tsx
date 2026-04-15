@@ -114,11 +114,32 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
   const [controlNoNumber, setControlNoNumber] = useState('');
   const controlNoInputRef = useRef<HTMLInputElement>(null);
   const [clientName, setClientName] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState('');
   const [nature, setNature] = useState('');
   const [barangay, setBarangay] = useState('');
   const [municipality, setMunicipality] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // System date state
+  const [systemDate, setSystemDate] = useState('');
+
+  // Fetch system date
+  useEffect(() => {
+    const fetchSystemDate = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/system/date`);
+        const result = await response.json();
+        if (result.success && result.data?.date) {
+          setSystemDate(result.data.date);
+          // If date is not selected yet, or it was the initial state, set it to system date
+          setDate((prev) => (prev === '' ? result.data.date : prev));
+        }
+      } catch (error) {
+        console.error('Error fetching system date:', error);
+      }
+    };
+    fetchSystemDate();
+  }, []);
 
   // Fee items state
   const [feeItems, setFeeItems] = useState<FeeItem[]>([]);
@@ -625,16 +646,6 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
             <Heading size="md" color="white" fontWeight="semibold">
               Payment Collection Form
             </Heading>
-            <Button
-              leftIcon={<FiSettings />}
-              size="sm"
-              variant="ghost"
-              color="white"
-              _hover={{ bg: 'whiteAlpha.300' }}
-              onClick={() => setShowCalibration(true)}
-            >
-              Printer Settings
-            </Button>
           </Flex>
         </CardHeader>
 
@@ -1156,7 +1167,7 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
                             setOrProvShare('');
                             setOrMunShare('');
                             setIsPaid(false);
-                            setDate(new Date().toISOString().split('T')[0]);
+                            setDate(systemDate);
 
                             // Focus the control number input
                             setTimeout(() => {

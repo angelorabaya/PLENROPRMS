@@ -121,12 +121,10 @@ const formatDate = (dateStr: string | null): string => {
  */
 const formatDateForInput = (dateStr: string | null): string => {
   if (!dateStr) return '';
-  try {
-    const date = new Date(dateStr);
-    return date.toISOString().split('T')[0];
-  } catch {
-    return '';
+  if (typeof dateStr === 'string' && dateStr.length >= 10) {
+    return dateStr.substring(0, 10);
   }
+  return '';
 };
 
 /**
@@ -136,7 +134,7 @@ const formatDateForInput = (dateStr: string | null): string => {
  */
 export const BarangaySharePaymentPage = () => {
   // Filter state
-  const [year, setYear] = useState<string>(new Date().getFullYear().toString());
+  const [year, setYear] = useState<string>('');
   const [yearError, setYearError] = useState<string | null>(null);
   const [municipality, setMunicipality] = useState<string>('');
   const [barangay, setBarangay] = useState<string>('');
@@ -241,7 +239,20 @@ export const BarangaySharePaymentPage = () => {
       }
     };
 
+    const fetchSystemYear = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/system/year`);
+        const result = await response.json();
+        if (result.success && result.data?.year) {
+          setYear((prev) => (prev === '' ? result.data.year.toString() : prev));
+        }
+      } catch (err) {
+        console.error('Failed to fetch system year:', err);
+      }
+    };
+
     fetchMunicipalities();
+    fetchSystemYear();
   }, []);
 
   // Fetch barangays when municipality changes

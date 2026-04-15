@@ -28,9 +28,13 @@ router.get(
         validate,
     ],
     asyncHandler(async (req: Request, res: Response) => {
-        const year = req.query.year
-            ? parseInt(req.query.year as string, 10)
-            : new Date().getFullYear();
+        let year: number;
+        if (req.query.year) {
+            year = parseInt(req.query.year as string, 10);
+        } else {
+            const yearResult = await executeQuery<{ yr: number }>(`SELECT YEAR(DATEADD(hour, 8, GETUTCDATE())) as yr`);
+            year = yearResult.recordset[0]?.yr || new Date().getFullYear(); // keep fallback just in case
+        }
 
         // Query with LEFT JOIN to get paid amounts from tbl_munpayment
         const result = await executeQuery<MunicipalShareRecord>(
@@ -89,9 +93,13 @@ router.get(
         validate,
     ],
     asyncHandler(async (req: Request, res: Response) => {
-        const year = req.query.year
-            ? parseInt(req.query.year as string, 10)
-            : new Date().getFullYear();
+        let year: number;
+        if (req.query.year) {
+            year = parseInt(req.query.year as string, 10);
+        } else {
+            const yearResult = await executeQuery<{ yr: number }>(`SELECT YEAR(DATEADD(hour, 8, GETUTCDATE())) as yr`);
+            year = yearResult.recordset[0]?.yr || new Date().getFullYear(); // keep fallback just in case
+        }
 
         const result = await executeQuery(
             `SELECT 

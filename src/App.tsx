@@ -341,7 +341,7 @@ function App() {
                           <Flex justify="space-between" align="center">
                             <Box>
                               <StatLabel color="gray.500">
-                                Collections ({new Date().getFullYear()})
+                                Collections ({chartYears.current || '...'})
                               </StatLabel>
                               <StatNumber>
                                 {new Intl.NumberFormat('en-PH', {
@@ -364,7 +364,7 @@ function App() {
                           <Flex justify="space-between" align="center">
                             <Box>
                               <StatLabel color="gray.500">
-                                Barangay Share ({new Date().getFullYear()})
+                                Barangay Share ({chartYears.current || '...'})
                               </StatLabel>
                               <StatNumber>
                                 {new Intl.NumberFormat('en-PH', {
@@ -387,7 +387,7 @@ function App() {
                           <Flex justify="space-between" align="center">
                             <Box>
                               <StatLabel color="gray.500">
-                                Municipal Share ({new Date().getFullYear()})
+                                Municipal Share ({chartYears.current || '...'})
                               </StatLabel>
                               <StatNumber>
                                 {new Intl.NumberFormat('en-PH', {

@@ -5,18 +5,8 @@
 
 // Get the API base URL dynamically
 const getApiBaseUrl = (): string => {
-  // In development, Vite proxy handles /api requests
-  if (import.meta.env.DEV) {
-    return '/api';
-  }
-
-  // In production, use the same host but with port 5001 for the backend
-  // This allows the app to work on any server without hardcoding the URL
-  const protocol = window.location.protocol;
-  const hostname = window.location.hostname;
-  const backendPort = 5001;
-
-  return `${protocol}//${hostname}:${backendPort}/api`;
+  // Use the same-origin /api path so IIS can reverse proxy in production.
+  return '/api';
 };
 
 export const API_BASE_URL = getApiBaseUrl();

@@ -65,11 +65,25 @@ if (config.isDev) {
 
 // Health check endpoint (no rate limiting)
 app.get('/health', async (_req, res) => {
-    const dbStatus = await testConnection();
+    let dbStatus = false;
+    let dbTimestamp = '';
+    
+    try {
+        dbStatus = await testConnection();
+        if (dbStatus) {
+            const result = await getPool().then(pool => 
+                pool.request().query('SELECT CONVERT(varchar(23), GETDATE(), 126) as dt')
+            );
+            dbTimestamp = result.recordset[0]?.dt || '';
+        }
+    } catch (error) {
+        dbStatus = false;
+    }
+
     res.json({
         success: true,
         status: 'ok',
-        timestamp: new Date().toISOString(),
+        timestamp: dbTimestamp || new Date().toISOString(), // keep fallback if DB is down
         database: dbStatus ? 'connected' : 'disconnected',
         environment: config.nodeEnv,
     });

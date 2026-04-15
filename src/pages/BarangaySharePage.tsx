@@ -132,7 +132,7 @@ interface MonthlyShareRecord {
 export const BarangaySharePage = () => {
   const [data, setData] = useState<BarangayShareRecord[]>([]);
   const [years, setYears] = useState<number[]>([]);
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -175,11 +175,22 @@ export const BarangaySharePage = () => {
           const filteredYears = result.data.filter((year: number) => year > 2023);
           setYears(filteredYears);
           // Set default to current year if available, otherwise first year
-          const currentYear = new Date().getFullYear();
+          // Fetch server year instead of using JS Date
+          let currentYear = filteredYears.length > 0 ? filteredYears[0] : 0;
+          try {
+            const yearRes = await fetch(`${API_BASE_URL}/system/year`);
+            const yearData = await yearRes.json();
+            if (yearData.success && yearData.data?.year) {
+              currentYear = yearData.data.year;
+            }
+          } catch(e) {}
+
           if (filteredYears.includes(currentYear)) {
             setSelectedYear(currentYear);
           } else if (filteredYears.length > 0) {
             setSelectedYear(filteredYears[0]);
+          } else {
+            setSelectedYear(currentYear);
           }
         }
       } catch (err) {
@@ -288,8 +299,36 @@ export const BarangaySharePage = () => {
   };
 
   // Handle print preview
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!printRef.current) return;
+
+    let printDateStr = '';
+    try {
+      const response = await fetch(`${API_BASE_URL}/system/datetime`);
+      const result = await response.json();
+      if (result.success && result.data?.datetime) {
+        const dt = new Date(result.data.datetime);
+        printDateStr = dt.toLocaleString('en-PH', {
+          timeZone: 'Asia/Manila',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      }
+    } catch(e) {}
+    
+    if (!printDateStr) {
+      printDateStr = new Date().toLocaleString('en-PH', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
 
     const printContent = printRef.current.innerHTML;
     const printWindow = window.open('', '_blank', 'width=900,height=600');
@@ -383,13 +422,7 @@ export const BarangaySharePage = () => {
                 <body>
                     ${printContent}
                     <div class="print-footer">
-                        Printed on: ${new Date().toLocaleString('en-PH', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        Printed on: ${printDateStr}
                     </div>
                 </body>
                 </html>

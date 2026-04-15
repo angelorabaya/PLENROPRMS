@@ -9,10 +9,12 @@ import municipalitiesRouter from './municipalities.js';
 import municipalShareRouter from './municipalShare.js';
 import municipalPaymentRouter from './municipalPayment.js';
 import authRouter from './auth.js';
+import systemRouter from './system.js';
 
 const router = Router();
 
 // Mount routes
+router.use('/system', systemRouter);
 router.use('/auth', authRouter);
 router.use('/permits', permitsRouter);
 router.use('/collections', collectionsRouter);
