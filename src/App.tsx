@@ -36,6 +36,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { API_BASE_URL } from './config/api';
+import { getRolePermissions, normalizeUserRole, type UserRole } from './types/auth';
 
 /**
  * PLENRO-PRMS Main Application
@@ -46,11 +47,10 @@ function App() {
   const [activePath, setActivePath] = useState('/');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [canCancelPayment, setCanCancelPayment] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserProfile>({
     name: '',
     email: '',
-    role: 'User',
+    role: 'Viewer',
     avatarUrl: undefined,
   });
   const [activePermitsCount, setActivePermitsCount] = useState<number>(0);
@@ -190,22 +190,24 @@ function App() {
       isClosable: true,
     });
     setIsAuthenticated(false);
-    setCanCancelPayment(false);
-    setCurrentUser({ name: '', email: '', role: 'User', avatarUrl: undefined });
+    setCurrentUser({ name: '', email: '', role: 'Viewer', avatarUrl: undefined });
     localStorage.removeItem('currentUser');
   };
 
   // Handle login success
-  const handleLogin = (username: string, name: string, logAccess: number | boolean) => {
+  const handleLogin = (username: string, name: string, role: UserRole) => {
+    const normalizedRole = normalizeUserRole(role);
     setIsAuthenticated(true);
-    setCanCancelPayment(Number(logAccess) === 1 || logAccess === true);
     setCurrentUser({
       name: name,
       email: `${username}@plenro.gov.ph`,
-      role: 'User',
+      role: normalizedRole,
       avatarUrl: undefined,
     });
-    localStorage.setItem('currentUser', JSON.stringify({ username, name }));
+    localStorage.setItem(
+      'currentUser',
+      JSON.stringify({ username, name, role: normalizedRole })
+    );
   };
 
   const handleToggleSidebar = () => {
@@ -227,6 +229,7 @@ function App() {
 
   // Calculate sidebar width for main content margin
   const sidebarWidth = isSidebarCollapsed ? '70px' : '280px';
+  const permissions = getRolePermissions(normalizeUserRole(currentUser.role));
 
   // If not authenticated, show login page
   if (!isAuthenticated) {
@@ -301,11 +304,23 @@ function App() {
           ) : activePath === '/permit-extraction/municipal-share' ? (
             <MunicipalSharePage />
           ) : activePath === '/payments/barangay-share-payment' ? (
-            <BarangaySharePaymentPage />
+            <BarangaySharePaymentPage
+              canCreate={permissions.canCreate}
+              canUpdate={permissions.canUpdate}
+              canDelete={permissions.canDelete}
+            />
           ) : activePath === '/payments/municipal-share-payment' ? (
-            <MunicipalSharePaymentPage />
+            <MunicipalSharePaymentPage
+              canCreate={permissions.canCreate}
+              canUpdate={permissions.canUpdate}
+              canDelete={permissions.canDelete}
+            />
           ) : activePath === '/collections/payment-collections' ? (
-            <PaymentCollectionsPage canCancelPayment={canCancelPayment} />
+            <PaymentCollectionsPage
+              canEdit={permissions.canCreate || permissions.canUpdate}
+              canCancelPayment={permissions.canCancelPayment}
+              isAdmin={permissions.role === 'Admin'}
+            />
           ) : (
             <>
               {/* Dashboard Stats - Only show on home */}

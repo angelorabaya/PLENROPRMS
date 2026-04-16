@@ -132,7 +132,17 @@ const formatDateForInput = (dateStr: string | null): string => {
  * Filter controls: Year, Municipality, Barangay
  * CRUD functionality for payment records
  */
-export const BarangaySharePaymentPage = () => {
+interface BarangaySharePaymentPageProps {
+  canCreate: boolean;
+  canUpdate: boolean;
+  canDelete: boolean;
+}
+
+export const BarangaySharePaymentPage = ({
+  canCreate,
+  canUpdate,
+  canDelete,
+}: BarangaySharePaymentPageProps) => {
   // Filter state
   const [year, setYear] = useState<string>('');
   const [yearError, setYearError] = useState<string | null>(null);
@@ -292,6 +302,7 @@ export const BarangaySharePaymentPage = () => {
 
   // Handle Add button click
   const handleAddClick = () => {
+    if (!canCreate) return;
     setEditingRecord(null);
     setFormData(emptyFormData);
     onFormOpen();
@@ -299,6 +310,7 @@ export const BarangaySharePaymentPage = () => {
 
   // Handle Edit button click
   const handleEditClick = (record: PaymentRecord) => {
+    if (!canUpdate) return;
     setEditingRecord(record);
     setFormData({
       bs_natureofpayment: record.bs_natureofpayment || '',
@@ -314,6 +326,7 @@ export const BarangaySharePaymentPage = () => {
 
   // Handle Delete button click
   const handleDeleteClick = (record: PaymentRecord) => {
+    if (!canDelete) return;
     setDeletingRecord(record);
     onDeleteOpen();
   };
@@ -325,6 +338,10 @@ export const BarangaySharePaymentPage = () => {
 
   // Handle form submit (Create/Update)
   const handleFormSubmit = async () => {
+    if ((editingRecord && !canUpdate) || (!editingRecord && !canCreate)) {
+      return;
+    }
+
     if (!formData.bsamount || parseFloat(formData.bsamount) <= 0) {
       toast({
         title: 'Validation Error',
@@ -399,7 +416,7 @@ export const BarangaySharePaymentPage = () => {
 
   // Handle delete confirm
   const handleDeleteConfirm = async () => {
-    if (!deletingRecord) return;
+    if (!deletingRecord || !canDelete) return;
 
     setIsSubmitting(true);
 
@@ -441,7 +458,10 @@ export const BarangaySharePaymentPage = () => {
   const totalAmount = paymentRecords.reduce((sum, p) => sum + (p.bsamount || 0), 0);
 
   // Check if filters are complete for adding
-  const canAddPayment = year && !yearError && municipality && barangay;
+  const canAddPayment = Boolean(year && !yearError && municipality && barangay && canCreate);
+  const canEditPayment = canUpdate;
+  const canDeletePayment = canDelete;
+  const canManageCurrentForm = editingRecord ? canUpdate : canCreate;
 
   return (
     <Box>
@@ -615,22 +635,26 @@ export const BarangaySharePaymentPage = () => {
                       <Td>{formatDate(payment.bs_datereturned)}</Td>
                       <Td>
                         <HStack spacing={1}>
-                          <IconButton
-                            aria-label="Edit payment"
-                            icon={<FiEdit2 />}
-                            size="sm"
-                            variant="ghost"
-                            colorScheme="blue"
-                            onClick={() => handleEditClick(payment)}
-                          />
-                          <IconButton
-                            aria-label="Delete payment"
-                            icon={<FiTrash2 />}
-                            size="sm"
-                            variant="ghost"
-                            colorScheme="red"
-                            onClick={() => handleDeleteClick(payment)}
-                          />
+                          {canEditPayment && (
+                            <IconButton
+                              aria-label="Edit payment"
+                              icon={<FiEdit2 />}
+                              size="sm"
+                              variant="ghost"
+                              colorScheme="blue"
+                              onClick={() => handleEditClick(payment)}
+                            />
+                          )}
+                          {canDeletePayment && (
+                            <IconButton
+                              aria-label="Delete payment"
+                              icon={<FiTrash2 />}
+                              size="sm"
+                              variant="ghost"
+                              colorScheme="red"
+                              onClick={() => handleDeleteClick(payment)}
+                            />
+                          )}
                         </HStack>
                       </Td>
                     </Tr>
@@ -657,6 +681,7 @@ export const BarangaySharePaymentPage = () => {
                   onChange={(value) => handleFormChange('bsamount', value)}
                   min={0}
                   precision={2}
+                  isDisabled={!canManageCurrentForm}
                 >
                   <NumberInputField placeholder="Enter amount" />
                 </NumberInput>
@@ -668,6 +693,8 @@ export const BarangaySharePaymentPage = () => {
                   value={formData.bs_natureofpayment}
                   onChange={(e) => handleFormChange('bs_natureofpayment', e.target.value)}
                   placeholder="e.g., Partial Payment, Full Payment"
+                  isDisabled={!canManageCurrentForm}
+                  isReadOnly={!canManageCurrentForm}
                 />
               </FormControl>
 
@@ -678,6 +705,8 @@ export const BarangaySharePaymentPage = () => {
                     type="date"
                     value={formData.bs_chkdate}
                     onChange={(e) => handleFormChange('bs_chkdate', e.target.value)}
+                    isReadOnly={!canManageCurrentForm}
+                    isDisabled={!canManageCurrentForm}
                   />
                 </FormControl>
                 <FormControl>
@@ -686,6 +715,8 @@ export const BarangaySharePaymentPage = () => {
                     value={formData.bs_chkno}
                     onChange={(e) => handleFormChange('bs_chkno', e.target.value)}
                     placeholder="Check number"
+                    isDisabled={!canManageCurrentForm}
+                    isReadOnly={!canManageCurrentForm}
                   />
                 </FormControl>
               </HStack>
@@ -696,6 +727,8 @@ export const BarangaySharePaymentPage = () => {
                   value={formData.bs_claimedby}
                   onChange={(e) => handleFormChange('bs_claimedby', e.target.value)}
                   placeholder="Name of claimant"
+                  isDisabled={!canManageCurrentForm}
+                  isReadOnly={!canManageCurrentForm}
                 />
               </FormControl>
 
@@ -706,6 +739,8 @@ export const BarangaySharePaymentPage = () => {
                     type="date"
                     value={formData.bs_claimeddate}
                     onChange={(e) => handleFormChange('bs_claimeddate', e.target.value)}
+                    isReadOnly={!canManageCurrentForm}
+                    isDisabled={!canManageCurrentForm}
                   />
                 </FormControl>
                 <FormControl>
@@ -714,6 +749,8 @@ export const BarangaySharePaymentPage = () => {
                     type="date"
                     value={formData.bs_datereturned}
                     onChange={(e) => handleFormChange('bs_datereturned', e.target.value)}
+                    isReadOnly={!canManageCurrentForm}
+                    isDisabled={!canManageCurrentForm}
                   />
                 </FormControl>
               </HStack>
@@ -723,7 +760,12 @@ export const BarangaySharePaymentPage = () => {
             <Button variant="ghost" mr={3} onClick={onFormClose}>
               Cancel
             </Button>
-            <Button colorScheme="blue" onClick={handleFormSubmit} isLoading={isSubmitting}>
+            <Button
+              colorScheme="blue"
+              onClick={handleFormSubmit}
+              isLoading={isSubmitting}
+              isDisabled={!canManageCurrentForm}
+            >
               {editingRecord ? 'Update' : 'Create'}
             </Button>
           </ModalFooter>
@@ -762,6 +804,7 @@ export const BarangaySharePaymentPage = () => {
                 onClick={handleDeleteConfirm}
                 ml={3}
                 isLoading={isSubmitting}
+                isDisabled={!canDeletePayment}
               >
                 Delete
               </Button>

@@ -39,7 +39,7 @@ import {
   ModalFooter,
   ModalCloseButton,
 } from '@chakra-ui/react';
-import { FiTrash2, FiPrinter, FiSave, FiDollarSign, FiCreditCard, FiXCircle, FiSettings } from 'react-icons/fi';
+import { FiTrash2, FiPrinter, FiSave, FiDollarSign, FiCreditCard, FiXCircle } from 'react-icons/fi';
 
 import { API_BASE_URL } from '../config/api';
 import { getAuditHeaders } from '../utils/auditHeaders';
@@ -86,9 +86,15 @@ import { PrinterCalibration } from '../components/PrinterCalibration';
  */
 interface PaymentCollectionsPageProps {
   canCancelPayment: boolean;
+  canEdit: boolean;
+  isAdmin: boolean;
 }
 
-export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsPageProps) => {
+export const PaymentCollectionsPage = ({
+  canCancelPayment,
+  canEdit,
+  isAdmin,
+}: PaymentCollectionsPageProps) => {
   // Theme colors
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
@@ -170,6 +176,11 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
   const [orProvShare, setOrProvShare] = useState('');
   const [orMunShare, setOrMunShare] = useState('');
   const [isPaid, setIsPaid] = useState(false);
+  const collectionStatus = clientName
+    ? isPaid
+      ? 'Already Processed'
+      : 'Ready for Collection'
+    : null;
 
   // Cancel confirmation modal state
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -206,6 +217,8 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
 
   // Add cash payment
   const handleAddCash = () => {
+    if (!canEdit || isPaid) return;
+
     const newPayment: PaymentMethod = {
       id: generateId(),
       mode: 'Cash',
@@ -219,6 +232,8 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
 
   // Add check payment
   const handleAddCheck = () => {
+    if (!canEdit || isPaid) return;
+
     const newPayment: PaymentMethod = {
       id: generateId(),
       mode: 'Check',
@@ -232,11 +247,13 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
 
   // Remove payment
   const handleRemovePayment = (id: string) => {
+    if (!canEdit || isPaid) return;
     setPayments(payments.filter((p) => p.id !== id));
   };
 
   // Update payment
   const handleUpdatePayment = (id: string, field: keyof PaymentMethod, value: string | number) => {
+    if (!canEdit || isPaid) return;
     setPayments(payments.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
   };
 
@@ -315,6 +332,8 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
 
   // Handle save
   const handleSave = async () => {
+    if (!canEdit || isPaid) return;
+
     if (!controlNoNumber || !clientName || !nature) {
       toast({
         title: 'Validation Error',
@@ -646,9 +665,21 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
             <Heading size="md" color="white" fontWeight="semibold">
               Payment Collection Form
             </Heading>
+            {collectionStatus && (
+              <Badge
+                colorScheme={isPaid ? 'orange' : 'green'}
+                variant="solid"
+                px={3}
+                py={1}
+                borderRadius="full"
+                fontSize="sm"
+                textTransform="none"
+              >
+                {collectionStatus}
+              </Badge>
+            )}
           </Flex>
         </CardHeader>
-
 
         <CardBody p={4}>
           {/* Form Fields Section */}
@@ -707,7 +738,8 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
                     borderColor: 'blue.500',
                     boxShadow: '0 0 0 1px var(--chakra-colors-blue-500)',
                   }}
-                  isDisabled={isPaid}
+                  isDisabled={isPaid || !isAdmin}
+                  isReadOnly={!isAdmin}
                 />
               </FormControl>
             </GridItem>
@@ -873,7 +905,7 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
                   variant="outline"
                   size="sm"
                   onClick={handleAddCash}
-                  isDisabled={isPaid}
+                  isDisabled={isPaid || !canEdit}
                 >
                   Add Cash
                 </Button>
@@ -883,7 +915,7 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
                   variant="outline"
                   size="sm"
                   onClick={handleAddCheck}
-                  isDisabled={isPaid}
+                  isDisabled={isPaid || !canEdit}
                 >
                   Add Check
                 </Button>
@@ -940,6 +972,8 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
                           borderColor={borderColor}
                           textAlign="right"
                           fontWeight="semibold"
+                          isDisabled={isPaid || !canEdit}
+                          isReadOnly={!canEdit}
                         />
                       </Td>
                       <Td py={3}>
@@ -952,7 +986,8 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
                           placeholder="Bank"
                           bg={inputBg}
                           borderColor={borderColor}
-                          isDisabled={payment.mode === 'Cash'}
+                          isDisabled={payment.mode === 'Cash' || isPaid || !canEdit}
+                          isReadOnly={!canEdit}
                           list="bank-options"
                         />
                         <datalist id="bank-options">
@@ -971,7 +1006,8 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
                           }
                           bg={inputBg}
                           borderColor={borderColor}
-                          isDisabled={payment.mode === 'Cash'}
+                          isDisabled={payment.mode === 'Cash' || isPaid || !canEdit}
+                          isReadOnly={!canEdit}
                         />
                       </Td>
                       <Td py={3}>
@@ -984,7 +1020,8 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
                           placeholder="Check #"
                           bg={inputBg}
                           borderColor={borderColor}
-                          isDisabled={payment.mode === 'Cash'}
+                          isDisabled={payment.mode === 'Cash' || isPaid || !canEdit}
+                          isReadOnly={!canEdit}
                         />
                       </Td>
                       <Td py={3}>
@@ -996,6 +1033,7 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
                             colorScheme="red"
                             variant="ghost"
                             onClick={() => handleRemovePayment(payment.id)}
+                            isDisabled={isPaid || !canEdit}
                           />
                         </Tooltip>
                       </Td>
@@ -1060,7 +1098,8 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
                   bg={inputBg}
                   borderColor={borderColor}
                   _hover={{ borderColor: 'blue.400' }}
-                  isDisabled={isPaid}
+                  isDisabled={isPaid || !canEdit}
+                  isReadOnly={!canEdit}
                 />
               </FormControl>
 
@@ -1077,7 +1116,8 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
                   bg={inputBg}
                   borderColor={borderColor}
                   _hover={{ borderColor: 'blue.400' }}
-                  isDisabled={isPaid || !nature.includes('Government Share')}
+                  isDisabled={isPaid || !canEdit || !nature.includes('Government Share')}
+                  isReadOnly={!canEdit}
                 />
               </FormControl>
             </Grid>
@@ -1206,6 +1246,7 @@ export const PaymentCollectionsPage = ({ canCancelPayment }: PaymentCollectionsP
               transition="all 0.2s"
               isDisabled={
                 isPaid ||
+                !canEdit ||
                 !clientName ||
                 feeTotal !== paymentTotal ||
                 !orProvShare ||
